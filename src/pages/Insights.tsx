@@ -3,7 +3,21 @@ import { AtendimentosService } from '@/services/atendimentos';
 import type { Atendimento } from '@/types/database.types';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Brain, TrendingUp, AlertTriangle, CheckCircle, MessageSquare, Sparkles, Loader2, Search, ArrowRight } from 'lucide-react';
+import {
+    Brain,
+    TrendingUp,
+    AlertTriangle,
+    CheckCircle,
+    MessageSquare,
+    Sparkles,
+    Loader2,
+    Search,
+    ArrowRight,
+    Users,
+    Building2,
+    XCircle,
+    ArrowLeft
+} from 'lucide-react';
 
 // Define the structure of the AI Response
 interface InsightResponse {
@@ -21,9 +35,17 @@ const LOADING_STEPS = [
     { text: "Finalizando...", icon: Sparkles }
 ];
 
+type InsightType = 'agent' | 'department' | 'reason';
+
 export default function Insights() {
-    const [agents, setAgents] = useState<string[]>([]);
-    const [selectedAgent, setSelectedAgent] = useState<string>('');
+    const [insightType, setInsightType] = useState<InsightType | null>(null);
+    const [filterOptions, setFilterOptions] = useState<{ agents: string[], departments: string[], reasons: string[] }>({
+        agents: [],
+        departments: [],
+        reasons: []
+    });
+
+    const [selectedValue, setSelectedValue] = useState<string>('');
     const [data, setData] = useState<Atendimento[]>([]);
     const [loadingData, setLoadingData] = useState(false);
 
@@ -33,18 +55,18 @@ export default function Insights() {
     const [aiInsight, setAiInsight] = useState<InsightResponse | null>(null);
     const [showResults, setShowResults] = useState(false);
 
-    // Load agents on mount
+    // Load options on mount
     useEffect(() => {
-        const loadAgents = async () => {
-            const { agents } = await AtendimentosService.getFilterOptions();
-            setAgents(agents);
+        const loadOptions = async () => {
+            const options = await AtendimentosService.getFilterOptions();
+            setFilterOptions(options as any);
         };
-        loadAgents();
+        loadOptions();
     }, []);
 
-    // Load data when agent changes
+    // Load data when value changes
     useEffect(() => {
-        if (!selectedAgent) return;
+        if (!selectedValue || !insightType) return;
 
         const loadData = async () => {
             setLoadingData(true);
@@ -52,12 +74,14 @@ export default function Insights() {
             setShowResults(false);
             setAiInsight(null);
 
-            const recent = await AtendimentosService.getRecentAtendimentosByAgent(selectedAgent, 20);
+            const limit = (insightType === 'department' || insightType === 'reason') ? 40 : 20;
+
+            const recent = await AtendimentosService.getRecentAtendimentosByFilter(insightType, selectedValue, limit);
             setData(recent);
             setLoadingData(false);
         };
         loadData();
-    }, [selectedAgent]);
+    }, [selectedValue, insightType]);
 
     // Cycle through loading steps
     useEffect(() => {
@@ -77,7 +101,7 @@ export default function Insights() {
     }, [isGenerating]);
 
     const handleGenerateInsight = async () => {
-        if (!selectedAgent || data.length === 0) return;
+        if (!selectedValue || data.length === 0 || !insightType) return;
 
         try {
             setIsGenerating(true);
@@ -86,7 +110,8 @@ export default function Insights() {
             setLoadingStepIndex(0);
 
             const payload = {
-                agent: selectedAgent,
+                agent: selectedValue, // Providing the selected value as 'agent' context for the AI
+                context_type: insightType, // Additional context
                 conversations: data.map(d => ({
                     id: d.id,
                     date: d.data,
@@ -97,7 +122,11 @@ export default function Insights() {
                 }))
             };
 
-            const response = await fetch('https://n8nconectajuse.conectajuse.shop/webhook/insight', {
+            let webhookUrl = 'https://n8n.jetsalesbrasil.com/webhook/insight';
+            if (insightType === 'department') webhookUrl = 'https://n8n.jetsalesbrasil.com/webhook/insight_departamento';
+            if (insightType === 'reason') webhookUrl = 'https://n8n.jetsalesbrasil.com/webhook/insight_motivo_fechamento';
+
+            const response = await fetch(webhookUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -158,14 +187,19 @@ export default function Insights() {
 
     if (showResults && aiInsight) {
         return (
-            <div className="min-h-full bg-slate-50/50 p-6 space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+            <div className="h-[calc(100vh-4rem)] overflow-y-auto bg-slate-50/50 p-6 space-y-8 animate-in slide-in-from-bottom-4 duration-500">
                 <div className="flex items-center justify-between">
                     <div>
                         <h1 className="text-3xl font-bold tracking-tighter text-slate-900 flex items-center gap-3">
                             <Brain className="w-8 h-8 text-primary" />
                             Análise de Performance
                         </h1>
-                        <p className="text-muted-foreground mt-1">Atendent: <span className="font-semibold text-primary">{selectedAgent}</span></p>
+                        <p className="text-muted-foreground mt-1">
+                            {insightType === 'agent' && 'Atendente: '}
+                            {insightType === 'department' && 'Departamento: '}
+                            {insightType === 'reason' && 'Motivo: '}
+                            <span className="font-semibold text-primary">{selectedValue}</span>
+                        </p>
                     </div>
                     <div className="flex gap-3">
 
@@ -257,7 +291,7 @@ export default function Insights() {
             <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl -z-10 animate-pulse delay-700" />
 
             {/* Central Content */}
-            <div className="w-full max-w-2xl relative z-10">
+            <div className="w-full max-w-4xl relative z-10">
 
                 {isGenerating ? (
                     // Loading State
@@ -290,9 +324,9 @@ export default function Insights() {
                             ))}
                         </div>
                     </div>
-                ) : (
-                    // Selection State (Hero)
-                    <div className="bg-white/80 backdrop-blur-xl p-8 rounded-3xl border border-white/20 shadow-2xl space-y-8 text-center animate-in fade-in slide-in-from-bottom-8 duration-700">
+                ) : !insightType ? (
+                    // Step 1: Select Type
+                    <div className="bg-white/80 backdrop-blur-xl p-8 rounded-3xl border border-white/20 shadow-2xl space-y-12 text-center animate-in fade-in slide-in-from-bottom-8 duration-700">
                         <div className="space-y-4">
                             <div className="inline-flex p-4 bg-primary/10 rounded-2xl mb-4">
                                 <Brain className="w-12 h-12 text-primary" />
@@ -301,18 +335,103 @@ export default function Insights() {
                                 Insights Inteligentes
                             </h1>
                             <p className="text-lg text-slate-500 max-w-md mx-auto">
-                                Selecione um atendente para gerar uma análise completa de performance baseada em IA.
+                                Escolha como deseja gerar sua análise para obter insights precisos.
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <button
+                                onClick={() => setInsightType('agent')}
+                                className="group relative overflow-hidden bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-primary/50 transition-all duration-300 hover:-translate-y-1"
+                            >
+                                <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                <div className="flex flex-col items-center gap-4 relative z-10">
+                                    <div className="p-4 bg-blue-50 rounded-full text-blue-600 group-hover:bg-primary group-hover:text-white transition-colors">
+                                        <Users className="w-8 h-8" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <h3 className="font-bold text-slate-900 text-lg">Por Atendente</h3>
+                                        <p className="text-sm text-slate-500">Analise a performance individual</p>
+                                    </div>
+                                </div>
+                            </button>
+
+                            <button
+                                onClick={() => setInsightType('department')}
+                                className="group relative overflow-hidden bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-primary/50 transition-all duration-300 hover:-translate-y-1"
+                            >
+                                <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                <div className="flex flex-col items-center gap-4 relative z-10">
+                                    <div className="p-4 bg-purple-50 rounded-full text-purple-600 group-hover:bg-primary group-hover:text-white transition-colors">
+                                        <Building2 className="w-8 h-8" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <h3 className="font-bold text-slate-900 text-lg">Por Departamento</h3>
+                                        <p className="text-sm text-slate-500">Visão geral por setor/motivo</p>
+                                    </div>
+                                </div>
+                            </button>
+
+                            <button
+                                onClick={() => setInsightType('reason')}
+                                className="group relative overflow-hidden bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-primary/50 transition-all duration-300 hover:-translate-y-1"
+                            >
+                                <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                <div className="flex flex-col items-center gap-4 relative z-10">
+                                    <div className="p-4 bg-red-50 rounded-full text-red-600 group-hover:bg-primary group-hover:text-white transition-colors">
+                                        <XCircle className="w-8 h-8" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <h3 className="font-bold text-slate-900 text-lg">Por Motivo de Fechamento</h3>
+                                        <p className="text-sm text-slate-500">Analise razões de perda/ganho</p>
+                                    </div>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    // Step 2: Select Specific Option
+                    <div className="bg-white/80 backdrop-blur-xl p-8 rounded-3xl border border-white/20 shadow-2xl space-y-8 text-center animate-in fade-in slide-in-from-right-8 duration-700">
+                        <div className="space-y-4">
+                            <button
+                                onClick={() => {
+                                    setInsightType(null);
+                                    setSelectedValue('');
+                                    setData([]);
+                                }}
+                                className="absolute top-6 left-6 p-2 text-slate-400 hover:text-primary transition-colors hover:bg-slate-100 rounded-full"
+                            >
+                                <ArrowLeft className="w-6 h-6" />
+                            </button>
+                            <div className="inline-flex p-4 bg-primary/10 rounded-2xl mb-4">
+                                {insightType === 'agent' && <Users className="w-12 h-12 text-primary" />}
+                                {insightType === 'department' && <Building2 className="w-12 h-12 text-primary" />}
+                                {insightType === 'reason' && <XCircle className="w-12 h-12 text-primary" />}
+                            </div>
+                            <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">
+                                {insightType === 'agent' && 'Selecionar Atendente'}
+                                {insightType === 'department' && 'Selecionar Departamento'}
+                                {insightType === 'reason' && 'Selecionar Motivo'}
+                            </h1>
+                            <p className="text-lg text-slate-500 max-w-md mx-auto">
+                                Escolha o {insightType === 'agent' ? 'atendente' : insightType === 'department' ? 'departamento' : 'motivo'} para iniciar a análise.
                             </p>
                         </div>
 
                         <div className="max-w-sm mx-auto space-y-4">
                             <div className="relative group">
-                                <Select value={selectedAgent} onValueChange={setSelectedAgent}>
+                                <Select value={selectedValue} onValueChange={setSelectedValue}>
                                     <SelectTrigger className="h-14 text-lg border-2 border-slate-200 rounded-xl focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all group-hover:border-primary/50">
-                                        <SelectValue placeholder="Selecione um atendente..." />
+                                        <SelectValue placeholder="Selecione..." />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {agents.map(a => (
+                                        {insightType === 'agent' && filterOptions.agents.map(a => (
+                                            <SelectItem key={a} value={a} className="py-3 text-base">{a}</SelectItem>
+                                        ))}
+                                        {insightType === 'department' && filterOptions.departments.map(a => (
+                                            <SelectItem key={a} value={a} className="py-3 text-base">{a}</SelectItem>
+                                        ))}
+                                        {insightType === 'reason' && filterOptions.reasons.map(a => (
                                             <SelectItem key={a} value={a} className="py-3 text-base">{a}</SelectItem>
                                         ))}
                                     </SelectContent>
@@ -321,7 +440,7 @@ export default function Insights() {
 
                             <button
                                 onClick={handleGenerateInsight}
-                                disabled={!selectedAgent || loadingData || data.length === 0}
+                                disabled={!selectedValue || loadingData || data.length === 0}
                                 className="w-full h-14 bg-gradient-to-r from-primary to-secondary text-primary-foreground rounded-xl font-bold text-lg shadow-lg hover:shadow-primary/25 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-3"
                             >
                                 {loadingData ? (
@@ -335,12 +454,12 @@ export default function Insights() {
                             </button>
 
                             <div className="h-6">
-                                {selectedAgent && !loadingData && data.length > 0 && (
+                                {selectedValue && !loadingData && data.length > 0 && (
                                     <p className="text-sm text-primary font-medium animate-in fade-in">
                                         {data.length} conversas encontradas
                                     </p>
                                 )}
-                                {selectedAgent && !loadingData && data.length === 0 && (
+                                {selectedValue && !loadingData && data.length === 0 && (
                                     <p className="text-sm text-red-500 font-medium animate-in fade-in">
                                         Nenhuma conversa recente encontrada
                                     </p>

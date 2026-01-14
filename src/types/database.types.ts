@@ -30,6 +30,7 @@ export interface Database {
                     historico_conversa: Json | null
                     motivo_fechamento: string | null
                     qualificacao_resumida: string | null
+                    departamento: string | null
                 }
                 Insert: {
                     id?: number
@@ -51,6 +52,7 @@ export interface Database {
                     historico_conversa?: Json | null
                     motivo_fechamento?: string | null
                     qualificacao_resumida?: string | null
+                    departamento?: string | null
                 }
                 Update: {
                     id?: number
@@ -72,6 +74,7 @@ export interface Database {
                     historico_conversa?: Json | null
                     motivo_fechamento?: string | null
                     qualificacao_resumida?: string | null
+                    departamento?: string | null
                 }
             }
         }
@@ -98,4 +101,5 @@ export interface Atendimento {
     qualificacao?: string | null;
     motivo_fechamento?: string | null;
     resumo_atendimento?: string | null;
+    departamento?: string | null;
 }

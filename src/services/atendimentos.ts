@@ -89,7 +89,8 @@ function adaptAtendimento(row: Database['public']['Tables']['atendimento']['Row'
         transcript: JSON.stringify(row.historico_conversa || {}, null, 2),
         melhorias: row.melhorias || aiData.melhorias,
         qualificacao: row.qualificacao || aiData.qualificacao,
-        motivo_fechamento: row.motivo_fechamento
+        motivo_fechamento: row.motivo_fechamento,
+        departamento: row.departamento
     };
 }
 
@@ -153,6 +154,7 @@ export const AtendimentosService = {
         const BATCH_SIZE = 1000;
         let allAgents = new Set<string>();
         let allReasons = new Set<string>();
+        let allDepartamentos = new Set<string>();
         let hasMore = true;
         let page = 0;
 
@@ -162,7 +164,7 @@ export const AtendimentosService = {
 
             const { data, error } = await supabase
                 .from('atendimento')
-                .select('atendente, motivo_fechamento')
+                .select('atendente, motivo_fechamento, departamento')
                 .range(from, to);
 
             if (error) {
@@ -175,6 +177,7 @@ export const AtendimentosService = {
                 (data as any[]).forEach(d => {
                     if (d.atendente) allAgents.add(d.atendente);
                     if (d.motivo_fechamento) allReasons.add(d.motivo_fechamento);
+                    if (d.departamento) allDepartamentos.add(d.departamento);
                 });
 
                 if (data.length < BATCH_SIZE) {
@@ -189,7 +192,8 @@ export const AtendimentosService = {
 
         return {
             agents: Array.from(allAgents).sort(),
-            reasons: Array.from(allReasons).sort()
+            reasons: Array.from(allReasons).sort(),
+            departments: Array.from(allDepartamentos).sort()
         };
     },
 
@@ -285,6 +289,31 @@ export const AtendimentosService = {
 
         if (error) {
             console.error('Error fetching recent atendimentos by agent:', error);
+            return [];
+        }
+
+        return (data || []).map(adaptAtendimento);
+    },
+
+    getRecentAtendimentosByFilter: async (type: 'agent' | 'department' | 'reason', value: string, limit: number = 20): Promise<Atendimento[]> => {
+        let query = supabase
+            .from('atendimento')
+            .select('*')
+            .order('data', { ascending: false })
+            .limit(limit);
+
+        if (type === 'agent') {
+            query = query.eq('atendente', value);
+        } else if (type === 'department') {
+            query = query.eq('departamento', value);
+        } else if (type === 'reason') {
+            query = query.eq('motivo_fechamento', value);
+        }
+
+        const { data, error } = await query;
+
+        if (error) {
+            console.error(`Error fetching recent atendimentos by ${type}:`, error);
             return [];
         }
 
